@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # =================================================================
-# 🌐 Web Server (Render + UptimeRobot)
+# 🌐 Web Server (สำหรับ Koyeb / Render / UptimeRobot)
 # =================================================================
 app = Flask('')
 
@@ -32,7 +32,7 @@ def keep_alive():
     t.start()
 
 # =================================================================
-# ⚙️ Config System
+# ⚙️ Config System (ระบบบันทึกค่า)
 # =================================================================
 CONFIG_FILE = 'config.json'
 
@@ -88,9 +88,9 @@ bot = BoostBot()
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ ต้องเป็น Administrator เท่านั้น", ephemeral=True)
+        await interaction.response.send_message("❌ **คุณไม่มีสิทธิ์** (ต้องเป็น Administrator)", ephemeral=True)
     elif isinstance(error, app_commands.CommandOnCooldown):
-        await interaction.response.send_message(f"⏳ รออีก {error.retry_after:.2f} วินาที", ephemeral=True)
+        await interaction.response.send_message(f"⏳ ใจเย็นๆ รออีก {error.retry_after:.2f} วินาที", ephemeral=True)
     else:
         print(f"⚠️ Error: {error}")
         traceback.print_exc()
@@ -98,30 +98,69 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 # =================================================================
 # 🛠️ Slash Commands
 # =================================================================
-@bot.tree.command(name="setup", description="ตั้งค่าห้องแจ้งเตือน")
-@app_commands.describe(channel="เลือกห้อง")
+
+@bot.tree.command(name="setup", description="ตั้งค่าห้องแจ้งเตือนคนบูสต์")
+@app_commands.describe(channel="เลือกห้องที่ต้องการให้แจ้งเตือน")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup(interaction: discord.Interaction, channel: discord.TextChannel):
     if not channel.permissions_for(interaction.guild.me).send_messages:
         return await interaction.response.send_message(f"❌ บอทไม่มีสิทธิ์ส่งข้อความในห้อง {channel.mention}", ephemeral=True)
     update_guild_config(interaction.guild_id, {"channel_id": channel.id})
-    await interaction.response.send_message(embed=discord.Embed(title="✅ ตั้งค่าเรียบร้อย", description=f"แจ้งเตือนที่: {channel.mention}", color=0x00ff00), ephemeral=True)
+    await interaction.response.send_message(embed=discord.Embed(title="✅ ตั้งค่าห้องเรียบร้อย", description=f"แจ้งเตือนที่: {channel.mention}", color=0x00ff00), ephemeral=True)
 
-@bot.tree.command(name="add_role", description="ตั้งค่ายศแจก/ยึด")
+@bot.tree.command(name="add_role", description="ตั้งค่ายศที่จะแจก (สูงสุด 4 ยศ)")
 @app_commands.checks.has_permissions(administrator=True)
 async def add_role(interaction: discord.Interaction, role1: discord.Role, role2: discord.Role=None, role3: discord.Role=None, role4: discord.Role=None):
-    roles = [r for r in [role1, role2, role3, role4] if r is not None]
+    await save_roles(interaction, role1, role2, role3, role4)
+
+@bot.tree.command(name="edit_role", description="แก้ไขยศที่จะแจกรางวัล (ทับค่าเดิม)")
+@app_commands.checks.has_permissions(administrator=True)
+async def edit_role(interaction: discord.Interaction, role1: discord.Role, role2: discord.Role=None, role3: discord.Role=None, role4: discord.Role=None):
+    await save_roles(interaction, role1, role2, role3, role4)
+
+async def save_roles(interaction, r1, r2, r3, r4):
+    roles = [r for r in [r1, r2, r3, r4] if r is not None]
+    
+    # เช็คยศบอท
     for r in roles:
         if r >= interaction.guild.me.top_role:
-            return await interaction.response.send_message(f"❌ ยศ {r.mention} สูงกว่ายศบอท!", ephemeral=True)
+            return await interaction.response.send_message(f"❌ ยศ {r.mention} สูงกว่ายศของบอท! โปรดเลื่อนยศบอทขึ้นไป", ephemeral=True)
+            
     update_guild_config(interaction.guild_id, {"role_ids": [r.id for r in roles]})
-    await interaction.response.send_message(embed=discord.Embed(title="✅ บันทึกยศเรียบร้อย", description=f"จำนวน: {len(roles)} ยศ", color=0x00ff00), ephemeral=True)
+    
+    role_mentions = "\n".join([f"• {r.mention}" for r in roles])
+    embed = discord.Embed(title="✅ บันทึกยศรางวัลเรียบร้อย", description=f"รายการยศ:\n{role_mentions}", color=0x00ff00)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@bot.tree.command(name="test", description="ทดสอบระบบ")
+@bot.tree.command(name="list_role", description="ดูรายชื่อยศที่ตั้งค่าไว้")
+@app_commands.checks.has_permissions(administrator=True)
+async def list_role(interaction: discord.Interaction):
+    config = get_guild_config(interaction.guild_id)
+    role_ids = config.get("role_ids", [])
+    
+    if not role_ids:
+        return await interaction.response.send_message("❌ ยังไม่ได้ตั้งค่ายศเลยครับ ใช้ `/add_role` ก่อนนะ", ephemeral=True)
+    
+    text_list = []
+    for r_id in role_ids:
+        role = interaction.guild.get_role(r_id)
+        if role:
+            text_list.append(f"✅ {role.mention}")
+        else:
+            text_list.append(f"❌ ยศที่ถูกลบไปแล้ว (ID: {r_id})")
+            
+    embed = discord.Embed(
+        title="📋 รายชื่อยศรางวัล Boost",
+        description="\n".join(text_list),
+        color=0x3498db
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name="test", description="ทดสอบระบบ (Simulate)")
 @app_commands.choices(action=[app_commands.Choice(name="🚀 จำลอง Boost", value="boost"), app_commands.Choice(name="📉 จำลอง Unboost", value="unboost")])
 @app_commands.checks.has_permissions(administrator=True)
 async def test(interaction: discord.Interaction, action: app_commands.Choice[str]):
-    await interaction.response.send_message(f"⏳ ทดสอบ: **{action.name}**", ephemeral=True)
+    await interaction.response.send_message(f"⏳ เริ่มการทดสอบ: **{action.name}**", ephemeral=True)
     if action.value == "boost": await handle_new_boost(interaction.user)
     else: await handle_remove_boost(interaction.user)
 
@@ -130,84 +169,105 @@ async def test(interaction: discord.Interaction, action: app_commands.Choice[str
 # =================================================================
 @bot.event
 async def on_member_update(before, after):
+    # เริ่มบูสต์
     if before.premium_since is None and after.premium_since is not None:
         await handle_new_boost(after)
+    # เลิกบูสต์
     elif before.premium_since is not None and after.premium_since is None:
         await handle_remove_boost(after)
 
 async def handle_new_boost(member):
-    config = get_guild_config(member.guild.id)
+    guild = member.guild
+    config = get_guild_config(guild.id)
     role_ids = config.get("role_ids", [])
     channel_id = config.get("channel_id")
     added = []
     
+    # แจกยศ
     for r_id in role_ids:
-        role = member.guild.get_role(r_id)
+        role = guild.get_role(r_id)
         if role:
             try: await member.add_roles(role); added.append(role.name)
             except: pass
 
+    # ส่ง Embed แจ้งเตือน
     if channel_id:
-        ch = member.guild.get_channel(channel_id)
+        ch = guild.get_channel(channel_id)
         if ch:
-            embed = discord.Embed(title=f"🚀 {member.guild.name} ได้รับการบูสต์!", color=0xf47fff, timestamp=datetime.datetime.now())
+            # ชื่อผู้บูสต์ขึ้นหัวข้อ Embed + Banner ด้านล่าง
+            embed = discord.Embed(
+                title=f"🚀 {member.name} ได้ทำการบูสต์เซิร์ฟเวอร์!", 
+                description=f"ขอบคุณ {member.mention} มากๆ ครับที่บูสต์เซิร์ฟเวอร์ของพวกเรา! 💖",
+                color=0xf47fff, 
+                timestamp=datetime.datetime.now()
+            )
             embed.set_thumbnail(url=member.display_avatar.url)
-            if member.guild.banner: embed.set_image(url=member.guild.banner.url)
+            
+            # ใส่ Banner เซิร์ฟเวอร์
+            if guild.banner: embed.set_image(url=guild.banner.url)
+            
             if added: embed.add_field(name="🎁 ยศที่ได้รับ", value="\n".join([f"✅ {n}" for n in added]), inline=False)
-            embed.set_footer(text=f"Level: {member.guild.premium_tier} • Boosts: {member.guild.premium_subscription_count}")
+            embed.set_footer(text=f"Level: {guild.premium_tier} • Boosts: {guild.premium_subscription_count}")
             await ch.send(embed=embed)
     
-    try: await member.send(embed=discord.Embed(title=f"ขอบคุณที่บูสต์ {member.guild.name}!", description="รับยศพิเศษเรียบร้อยครับ", color=0xf47fff))
+    # DM ขอบคุณ
+    try: await member.send(embed=discord.Embed(title=f"ขอบคุณที่บูสต์ {guild.name}!", description="คุณได้รับยศรางวัลพิเศษเรียบร้อยแล้วครับ", color=0xf47fff))
     except: pass
 
 async def handle_remove_boost(member):
-    config = get_guild_config(member.guild.id)
+    guild = member.guild
+    config = get_guild_config(guild.id)
     role_ids = config.get("role_ids", [])
     channel_id = config.get("channel_id")
     removed = []
 
+    # ดึงยศคืน
     for r_id in role_ids:
-        role = member.guild.get_role(r_id)
+        role = guild.get_role(r_id)
         if role and role in member.roles:
             try: await member.remove_roles(role); removed.append(role.name)
             except: pass
             
+    # ส่ง Embed แจ้งเตือน
     if channel_id:
-        ch = member.guild.get_channel(channel_id)
+        ch = guild.get_channel(channel_id)
         if ch:
-            embed = discord.Embed(title=f"📉 {member.name} ยกเลิกการบูสต์", description=f"เสียดายจัง {member.mention} ถอดบูสต์แล้ว", color=0xff4d4d, timestamp=datetime.datetime.now())
+            embed = discord.Embed(
+                title=f"📉 {member.name} ยกเลิกการบูสต์", 
+                description=f"น่าเสียดายจัง... {member.mention} ได้ถอด Boost ออกแล้ว 😢", 
+                color=0xff4d4d, 
+                timestamp=datetime.datetime.now()
+            )
             embed.set_thumbnail(url=member.display_avatar.url)
-            if member.guild.banner: embed.set_image(url=member.guild.banner.url)
-            embed.add_field(name="♻️ ยึดยศคืน", value="\n".join([f"❌ {n}" for n in removed]) if removed else "ไม่มี", inline=False)
-            embed.set_footer(text=f"Remaining: {member.guild.premium_subscription_count}")
+            
+            # ใส่ Banner เซิร์ฟเวอร์เหมือนกัน
+            if guild.banner: embed.set_image(url=guild.banner.url)
+            
+            embed.add_field(name="♻️ ระบบทำการดึงยศคืน", value="\n".join([f"❌ {n}" for n in removed]) if removed else "ไม่มี", inline=False)
+            embed.set_footer(text=f"Level: {guild.premium_tier} • Remaining: {guild.premium_subscription_count}")
             await ch.send(embed=embed)
 
 # =================================================================
-# 🔥 ระบบ Run บอทแบบปลอดภัย (Anti-Crash & Rate Limit Protection)
+# 🔥 ระบบ Run (Safe Mode: ป้องกัน 429 Rate Limit)
 # =================================================================
 keep_alive()
 
 token = os.environ.get('TOKEN')
 
 if not token:
-    print("❌ Error: ไม่พบ TOKEN")
+    print("❌ Error: ไม่พบ TOKEN (อย่าลืมตั้งค่าใน Environment Variables)")
 else:
-    # วนลูปเพื่อป้องกันบอทดับถาวร
     while True:
         try:
             bot.run(token)
         except discord.errors.HTTPException as e:
-            # ถ้าเจอ Error 429 (Rate Limit) หรือ 1015 (Cloudflare)
             if e.status == 429:
-                print("\n🔴 เจอ Rate Limit (429)! บอทจะพัก 30 นาที...")
-                print("⏳ กำลังนับถอยหลัง... ห้ามปิดโปรแกรม...")
-                time.sleep(1800) # นอนหลับ 30 นาที (1800 วิ)
+                print("\n🔴 เจอ Rate Limit (429)! บอทจะพัก 30 นาที... (อย่าปิดโปรแกรม)")
+                time.sleep(1800)
             else:
                 print(f"\n⚠️ HTTP Error: {e}")
-                print("♻️ จะลองเชื่อมต่อใหม่ใน 10 วินาที...")
                 time.sleep(10)
         except Exception as e:
-            print(f"\n❌ เกิดข้อผิดพลาด: {e}")
-            print("♻️ จะลองเชื่อมต่อใหม่ใน 10 วินาที...")
+            print(f"\n❌ Error: {e}")
             time.sleep(10)
-        
+
