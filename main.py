@@ -108,12 +108,12 @@ async def setup(interaction: discord.Interaction, channel: discord.TextChannel):
     update_guild_config(interaction.guild_id, {"channel_id": channel.id})
     await interaction.response.send_message(embed=discord.Embed(title="✅ ตั้งค่าห้องเรียบร้อย", description=f"แจ้งเตือนที่: {channel.mention}", color=0x00ff00), ephemeral=True)
 
-@bot.tree.command(name="add_role", description="ตั้งค่ายศที่จะแจก (สูงสุด 4 ยศ)")
+@bot.tree.command(name="add_role", description="ตั้งค่ายศที่จะแจกรางวัล")
 @app_commands.checks.has_permissions(administrator=True)
 async def add_role(interaction: discord.Interaction, role1: discord.Role, role2: discord.Role=None, role3: discord.Role=None, role4: discord.Role=None):
     await save_roles(interaction, role1, role2, role3, role4)
 
-@bot.tree.command(name="edit_role", description="แก้ไขยศที่จะแจกรางวัล (ทับค่าเดิม)")
+@bot.tree.command(name="edit_role", description="แก้ไขยศที่จะแจกรางวัล")
 @app_commands.checks.has_permissions(administrator=True)
 async def edit_role(interaction: discord.Interaction, role1: discord.Role, role2: discord.Role=None, role3: discord.Role=None, role4: discord.Role=None):
     await save_roles(interaction, role1, role2, role3, role4)
@@ -156,7 +156,7 @@ async def list_role(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@bot.tree.command(name="test", description="ทดสอบระบบ (Simulate)")
+@bot.tree.command(name="test", description="ทดสอบระบบ")
 @app_commands.choices(action=[app_commands.Choice(name="🚀 จำลอง Boost", value="boost"), app_commands.Choice(name="📉 จำลอง Unboost", value="unboost")])
 @app_commands.checks.has_permissions(administrator=True)
 async def test(interaction: discord.Interaction, action: app_commands.Choice[str]):
